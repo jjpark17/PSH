@@ -7,6 +7,8 @@ public class savingStates implements Serializable {
     public String description;
     public int id;
 
+    public boolean sound_save;
+    public String sound;
     public boolean cache_save;
     public String cache;
 
@@ -14,6 +16,8 @@ public class savingStates implements Serializable {
         id = -1;
         name = "";
         description = "";
+        sound_save = false;
+        sound = "";
         cache_save = false;
         cache = "";
     }

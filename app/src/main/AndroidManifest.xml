@@ -10,12 +10,22 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PSH">
-        <activity android:name=".savingStates"
-            tools:ignore="Instantiatable"></activity>
-        <activity android:name=".SettingsActivity"></activity>
+        <activity
+            android:name=".savingStates"
+            tools:ignore="Instantiatable" />
+        <activity
+            android:name=".CustomAdapter"
+            tools:ignore="Instantiatable" />
+        <activity
+            android:name=".StateHoldingActivity"
+            tools:ignore="Instantiatable" />
+        <activity
+            android:name=".SettingsActivity"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".MainActivity"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
