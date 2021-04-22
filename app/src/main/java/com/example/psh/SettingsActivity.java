@@ -2,17 +2,12 @@ package com.example.psh;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 
-import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.preference.PreferenceFragmentCompat;
-
-import com.google.android.material.textfield.TextInputEditText;
 
 public class SettingsActivity extends AppCompatActivity {
     private savingStates state;
@@ -22,6 +17,7 @@ public class SettingsActivity extends AppCompatActivity {
     private EditText des_box;
     private CheckBox sound_cb;
     private CheckBox cache_cb;
+    private CheckBox active_cb;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,7 +32,7 @@ public class SettingsActivity extends AppCompatActivity {
         des_box = findViewById(R.id.des_box);
         sound_cb = findViewById(R.id.sound_cb);
         cache_cb = findViewById(R.id.cache_cb);
-
+        active_cb = findViewById(R.id.active_cb);
         if (op.equals("add"))
         {
             is_add = true;
@@ -48,6 +44,7 @@ public class SettingsActivity extends AppCompatActivity {
             des_box.setText(state.description);
             sound_cb.setChecked(state.sound_save);
             cache_cb.setChecked(state.cache_save);
+            active_cb.setChecked(state.is_active);
         }
     }
 
@@ -58,6 +55,7 @@ public class SettingsActivity extends AppCompatActivity {
         state.description = des_box.getText().toString();
         state.sound_save = sound_cb.isChecked();
         state.cache_save = cache_cb.isChecked();
+        state.is_active = active_cb.isChecked();
         reply_intent.putExtra("reply_state", state);
         if(is_add)
         {
