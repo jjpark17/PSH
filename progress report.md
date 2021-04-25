@@ -21,7 +21,7 @@ commit tag <list view> in develop branch
     Mainactivty에 listview 및 CustomAdapter 의 추가로 SettingsActicity에서 조작된 savingState에 따라 profile을 조작
 
 
-commit tag <list view> in main branch
+commit tag <app state saving> in main branch
   Summary
     앱을 껐다 켰을 때 정보를 잃지 않도록 하기 위해 SharedPreferences Object를 이용하여 만들어진 savingStates들을 관리하였고, 
     이 중 현재 active 상태인 profile의 번호를 기억하도록 하였음
