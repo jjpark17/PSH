@@ -27,3 +27,9 @@ commit tag <list view> in main branch
     이 중 현재 active 상태인 profile의 번호를 기억하도록 하였음
     회전 시 앱의 종료 및 재시작의 경우 content main과 listview_item에서 회전 자체를 막아서 방지함
     
+    
+commit tag <basic activity> in main branch
+  Summary
+    Main Activity에서 active 상태인 profile이 변경될 때 마다 현재 상태를 savingStates의 설정에 따라 저장/복구
+    저장해야할 양이 많아질 수 있기에 SharedPreference가 아닌 앱 내부 저장소에 파일로 쓰고 읽음
+    현재는 volume만 조절 가능
