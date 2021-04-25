@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.psh">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -17,7 +20,7 @@
             android:name=".CustomAdapter"
             tools:ignore="Instantiatable" />
         <activity
-            android:name=".StateHoldingActivity"
+            android:name=".LocationTracking"
             tools:ignore="Instantiatable" />
         <activity
             android:name=".SettingsActivity"

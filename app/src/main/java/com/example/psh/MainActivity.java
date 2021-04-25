@@ -1,16 +1,33 @@
 package com.example.psh;
 
+import android.Manifest;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
-public class MainActivity extends AppCompatActivity implements StateHoldingActivity.OnTaskCompleted{
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+
+public class MainActivity extends AppCompatActivity implements LocationTracking.OnTaskCompleted{
+
+    private static final int REQUEST_CODE_ACCESS_NOTIFICATION_POLICY = 1;
+    private static final int REQUEST_LOCATION_PERMISSION = 2;
 
     private ListView listView;
     private int cur_pos = -1;
@@ -18,6 +35,7 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
     private int id_cnt = 0;
 
     private CustomAdapter adapter = new CustomAdapter();
+    AudioManager mAudioManager;
 
     void restore_info()
     {
@@ -27,6 +45,24 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
         String json = sharedPref.getString("adap", "none");
         adapter.read_json(json);
         listView.setAdapter(adapter);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]
+                            {Manifest.permission.ACCESS_FINE_LOCATION},
+                    REQUEST_LOCATION_PERMISSION);
+        }
+/*
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.parse("package:" + getPackageName()));
+        startActivity(intent); 전체적인 설정을 키는 부분인 듯
+ */
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted()) {
+            Intent intent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+            startActivity(intent);
+        }
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> adapterView,
@@ -45,6 +81,7 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.content_main);
+        mAudioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         listView = findViewById(R.id.show_list);
         restore_info();
     }
@@ -64,6 +101,7 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
                     if (run_id != -1) {
                         savingStates run_state = adapter.find_by_id(run_id);
                         run_state.is_active = false;   //로그 갈아 끼우고?
+                        save_runstate();
                     }
                     run_id = state.id;
                 }
@@ -76,9 +114,18 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
                     if(run_id != -1)
                     {
                         savingStates run_state = adapter.find_by_id(run_id);
-                        run_state.is_active = false;   //로그 갈아 끼우고? // equal은 생각 안해도 될듯?
+                        run_state.is_active = false;
+                        save_runstate();
                     }
                     run_id = state.id;
+                    execute_runstate(run_id);
+                }
+                else{
+                    if(run_id == state.id) //on -> off로
+                    {
+                        save_runstate();
+                        run_id = -1;
+                    }
                 }
                 adapter.notifyDataSetChanged();
             }
@@ -89,7 +136,7 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
                 {
                     run_id = -1;
                 }
-                //관련 로그 다 지우고
+                //관련 로그 파일 다 지우고
                 adapter.remove(cur_pos);
                 adapter.notifyDataSetChanged();
             }
@@ -129,11 +176,82 @@ public class MainActivity extends AppCompatActivity implements StateHoldingActiv
 
     @Override
     public void onTaskCompleted(String result) {
-
+        //string말고 딴 거 받고 위치 확인해서 run_state 변경 및 execute_runstate실행
     }
 
-    //켜져 있을 때 background에서 동작하는 거 activity 하나 만들고 profile 넘겨주면 do it background를 슈슉슈슉 할 수 있도록
-    //background에서 바뀔 때 alarm 띄워주는 거
-    //위치 추적하는 거
+    public void execute_runstate(int id)
+    {
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(getFilesDir() + Integer.toString(run_id) + "log.txt"));
+            String readStr = "";
+            String str = null;
+            while((str = br.readLine()) != null)
+                readStr += str + "\n";
+            br.close();
+            Log.d("whole txt", readStr);
+            String[] arr = readStr.split("volume");
+            if(arr.length > 1)
+            {
+                Log.d("volume txt", arr[1]);
+                string_to_volume(arr[1]);
+                readStr = arr[2];
+            }
+
+            //(readStr);
+        } catch (FileNotFoundException e) {
+            return;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void save_runstate()
+    {
+        try {
+            BufferedWriter bw = new BufferedWriter(new FileWriter(getFilesDir() + Integer.toString(run_id) + "log.txt",false));
+            savingStates run_state = adapter.find_by_id(run_id);
+            if(run_state.sound_save)
+            {
+                bw.write("volume");
+                bw.write(volume_to_string());
+                bw.write("volume");
+            }
+            bw.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    //location option 켜 놓은 애들 배열로 만들어 놓고 locationtracking에서 background로 위치 추적하도록 만들고
+    //위치는 아예 안겹치게 받거나 또는 그냥 맨 위에거 부터 먼저 겹치는 곳으로 가도록? 나중에 우선순위를 설정하고 비교하는 식으로.
+    //main으로 위치 넘겨줄 때 마다 추적하고 있는 위치랑 비교해서 alarm 띄워주고 설정 건드리도록 변경
+
     //권한은 그냥 한번에 받자
+
+    public String volume_to_string()
+    {
+       int alarm = mAudioManager.getStreamVolume(AudioManager.STREAM_ALARM);
+       int dtmf = mAudioManager.getStreamVolume(AudioManager.STREAM_DTMF);
+       int media = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+       int notice = mAudioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+       int ring = mAudioManager.getStreamVolume(AudioManager.STREAM_RING);
+       int system = mAudioManager.getStreamVolume(AudioManager.STREAM_SYSTEM);
+       int vcall = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+       int ringmode = mAudioManager.getRingerMode();
+       int mode = mAudioManager.getMode();
+       return alarm + ";" + dtmf + ";" + media + ";" + notice + ";" + ring + ";"  + system + ";" + vcall + ";" + ringmode + ";" + mode;
+    }
+
+    public void string_to_volume(String log)
+    {
+        String[] arr = log.split(";");
+        mAudioManager.setStreamVolume(AudioManager.STREAM_ALARM, Integer.parseInt(arr[0]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_DTMF, Integer.parseInt(arr[1]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, Integer.parseInt(arr[2]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Integer.parseInt(arr[3]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_RING, Integer.parseInt(arr[4]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, Integer.parseInt(arr[5]),0);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, Integer.parseInt(arr[6]),0);
+        mAudioManager.setRingerMode(Integer.parseInt(arr[7]));
+        mAudioManager.setMode(Integer.parseInt(arr[8]));
+    }
 }
