@@ -1,7 +1,9 @@
 package com.example.psh;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -14,8 +16,17 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.google.android.gms.location.Geofence;
+import com.google.android.gms.location.GeofencingClient;
+import com.google.android.gms.location.GeofencingRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -23,19 +34,41 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements LocationTracking.OnTaskCompleted{
+public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CODE_ACCESS_NOTIFICATION_POLICY = 1;
     private static final int REQUEST_LOCATION_PERMISSION = 2;
-
+    private static MainActivity instance;
     private ListView listView;
     private int cur_pos = -1;
-    private int run_id = -1;
+    public int run_id = -1;
     private int id_cnt = 0;
 
-    private CustomAdapter adapter = new CustomAdapter();
+    private boolean previous_tracking;
+    private Geofence geofence = null;
+    private GeofencingClient geofencingClient;
+    private GeofencingRequest.Builder builder;
+    private PendingIntent geofencePendingIntent;
+
+    private float GEOFENCE_RADIUS = 150;
+
+
+    public CustomAdapter adapter = new CustomAdapter();
     AudioManager mAudioManager;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.content_main);
+        mAudioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
+        listView = findViewById(R.id.show_list);
+        restore_info();
+        instance = this;
+        geofencingClient = LocationServices.getGeofencingClient(this);
+    }
 
     void restore_info()
     {
@@ -47,9 +80,10 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
         listView.setAdapter(adapter);
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                + ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]
-                            {Manifest.permission.ACCESS_FINE_LOCATION},
+                            {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_BACKGROUND_LOCATION},
                     REQUEST_LOCATION_PERMISSION);
         }
 /*
@@ -77,18 +111,14 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
         });
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.content_main);
-        mAudioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
-        listView = findViewById(R.id.show_list);
-        restore_info();
+    public static MainActivity getInstance() {
+        return instance;
     }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent reply){
         super.onActivityResult(requestCode, resultCode, reply);
+
         if (requestCode == 1) {
             if (resultCode == 1) {
                 savingStates state = (savingStates) reply.getSerializableExtra("reply_state");
@@ -106,6 +136,7 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
                     run_id = state.id;
                 }
                 adapter.notifyDataSetChanged();
+                manage_geofence(state);
             }
             else if(resultCode == 2){
                 savingStates state = (savingStates)reply.getSerializableExtra("reply_state");
@@ -115,6 +146,7 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
                     {
                         savingStates run_state = adapter.find_by_id(run_id);
                         run_state.is_active = false;
+                        state.is_active = true;
                         save_runstate();
                     }
                     run_id = state.id;
@@ -128,11 +160,18 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
                     }
                 }
                 adapter.notifyDataSetChanged();
+                manage_geofence(state);
             }
             else if(resultCode == 3){
                 //delete
                 savingStates state = (savingStates)reply.getSerializableExtra("reply_state");
-                if(state.equals(run_id))
+                if(state.geofence_exist)
+                {
+                    List<String> removelist = new ArrayList<>();
+                    removelist.add("geofence" + state.id);
+                    geofencingClient.removeGeofences(removelist);
+                }
+                if(state.id == run_id)
                 {
                     run_id = -1;
                 }
@@ -172,11 +211,6 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
         editor.putInt("run", run_id);
         editor.putInt("id_cnt", id_cnt);
         editor.commit();
-    }
-
-    @Override
-    public void onTaskCompleted(String result) {
-        //string말고 딴 거 받고 위치 확인해서 run_state 변경 및 execute_runstate실행
     }
 
     public void execute_runstate(int id)
@@ -253,5 +287,61 @@ public class MainActivity extends AppCompatActivity implements LocationTracking.
         mAudioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, Integer.parseInt(arr[6]),0);
         mAudioManager.setRingerMode(Integer.parseInt(arr[7]));
         mAudioManager.setMode(Integer.parseInt(arr[8]));
+    }
+
+    private PendingIntent getGeofencePendingIntent() {
+        // Reuse the PendingIntent if we already have it.
+        if (geofencePendingIntent != null) {
+            return geofencePendingIntent;
+        }
+        Intent intent = new Intent(this, LocationTracking.class);
+        // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
+        // calling addGeofences() and removeGeofences().
+        geofencePendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.
+                FLAG_UPDATE_CURRENT);
+        return geofencePendingIntent;
+    }
+
+    @SuppressLint("MissingPermission")
+    private void manage_geofence(savingStates state)
+    {
+        if(state.geofence_exist)
+        {
+            List<String> removelist = new ArrayList<>();
+            removelist.add("geofence" + state.id);
+            geofencingClient.removeGeofences(removelist);
+        }
+        if(state.is_tracking){
+            builder = new GeofencingRequest.Builder();
+            geofence = new Geofence.Builder()
+                    // Set the request ID of the geofence. This is a string to identify this
+                    // geofence.
+                    .setRequestId("geofence" + state.id)
+
+                    .setCircularRegion(
+                            state.lat,
+                            state.lng,
+                            GEOFENCE_RADIUS
+                    )
+                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER |
+                            Geofence.GEOFENCE_TRANSITION_EXIT)
+                    .build();
+            builder.setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER); //제일 처음 확인할 조건
+            builder.addGeofence(geofence);
+            geofencingClient.addGeofences(builder.build(), getGeofencePendingIntent())
+                    .addOnSuccessListener(new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            Log.d("000000", "onSuccess: Geofence Added...");
+                        }
+                    })
+                    .addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.d("000000", "onFailure: ");
+                        }
+                    });
+        }
     }
 }

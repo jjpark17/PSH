@@ -13,6 +13,11 @@ public class savingStates implements Serializable {
     public String cache_path = null;;
     public boolean is_active = false;
 
+    public boolean is_tracking = false;
+    public boolean geofence_exist = false;
+    public double lat;
+    public double lng;
+
     public savingStates() {
     }
 }

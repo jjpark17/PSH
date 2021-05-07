@@ -1,83 +1,74 @@
 package com.example.psh;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.location.Address;
-import android.location.Geocoder;
-import android.location.Location;
-import android.os.AsyncTask;
+import android.content.Intent;
+import android.util.Log;
+import android.widget.Toast;
+
+import com.google.android.gms.location.Geofence;
+import com.google.android.gms.location.GeofencingEvent;
 
 import java.util.List;
-import java.util.Locale;
 
-public class LocationTracking extends AsyncTask<Location, Void, String> {
-    private final String TAG = LocationTracking.class.getSimpleName();
-    private Context mContext;
-
-    interface OnTaskCompleted {
-        void onTaskCompleted(String result);
-    }
-    private OnTaskCompleted mListener;
-
-    LocationTracking(Context applicationContext, OnTaskCompleted listener) {
-        mContext = applicationContext;
-        mListener = listener;
-    }
+public class LocationTracking extends BroadcastReceiver {
+    // ...
+    private static final String TAG = "GeofenceBroadcastReceiv";
 
     @Override
-    protected String doInBackground(Location... locations) {
-        Geocoder geocoder = new Geocoder(mContext, Locale.getDefault());
-        Location location = locations[0];
-        List<Address> addresses = null;
-        String resultMessage = "";
-        /*try {
-            addresses = geocoder.getFromLocation(
-                    location.getLatitude(),
-                    location.getLongitude(),
-                    // In this sample, get just a single address
-                    1);
-        }
-        catch (IOException ioException) {
-            // Catch network or other I/O problems
-            resultMessage = mContext
-                    .getString(R.string.service_not_available);
-            Log.e(TAG, resultMessage, ioException);
-        }
-        catch (IllegalArgumentException illegalArgumentException) {
-            // Catch invalid latitude or longitude values
-            resultMessage = mContext
-                    .getString(R.string.invalid_lat_long_used);
-            Log.e(TAG, resultMessage + ". " +
-                    "Latitude = " + location.getLatitude() +
-                    ", Longitude = " +
-                    location.getLongitude(), illegalArgumentException);
-        }
-        if (addresses == null || addresses.size() == 0) {
-            if (resultMessage.isEmpty()) {
-                resultMessage = mContext
-                        .getString(R.string.no_address_found);
-                Log.e(TAG, resultMessage);
-            }
-        }
-        else {
-            // If an address is found, read it into resultMessage
-            Address address = addresses.get(0);
-            ArrayList<String> addressParts = new ArrayList<>();
+    public void onReceive(Context context, Intent intent) {
+        // TODO: This method is called when the BroadcastReceiver is receiving
+        // an Intent broadcast.
+//        Toast.makeText(context, "Geofence triggered...", Toast.LENGTH_SHORT).show();
 
-            // Fetch the address lines using getAddressLine,
-            // join them, and send them to the thread
-            for (int i = 0; i <= address.getMaxAddressLineIndex(); i++) {
-                addressParts.add(address.getAddressLine(i));
-            }
+        NotificationHelper notificationHelper = new NotificationHelper(context);
 
-            resultMessage = TextUtils.join("\n", addressParts);
-        }*/
-        return resultMessage;
-    }
+        GeofencingEvent geofencingEvent = GeofencingEvent.fromIntent(intent);
 
-    @Override
-    protected void onPostExecute(String address) {
-        mListener.onTaskCompleted(address);
-        super.onPostExecute(address);
+        if (geofencingEvent.hasError()) {
+            Log.d(TAG, "onReceive: Error receiving geofence event...");
+            return;
+        }
+
+        List<Geofence> geofenceList = geofencingEvent.getTriggeringGeofences();
+        for (Geofence geofence: geofenceList) {
+            Log.d(TAG, "onReceive: " + geofence.getRequestId());
+        }
+//        Location location = geofencingEvent.getTriggeringLocation();
+        int transitionType = geofencingEvent.getGeofenceTransition();
+        List<Geofence> geofences = geofencingEvent.getTriggeringGeofences();
+        Geofence temp = geofences.get(0);
+        int id = Integer.parseInt(temp.getRequestId().substring(8));
+        MainActivity mainActivity = MainActivity.getInstance();
+        switch (transitionType) {
+            case Geofence.GEOFENCE_TRANSITION_ENTER:
+                String body = "";
+                if(mainActivity.run_id != -1){
+                    mainActivity.adapter.find_by_id(mainActivity.run_id).is_active = false;
+                    mainActivity.save_runstate();
+                    body = mainActivity.adapter.find_by_id(mainActivity.run_id).name + " saved & ";
+                }
+                notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_ENTER" + temp.getRequestId() + "test", body + mainActivity.adapter.find_by_id(id).name + " restored" , SettingsActivity.class);
+                mainActivity.run_id = id;
+                mainActivity.execute_runstate(id);
+                mainActivity.adapter.find_by_id(id).is_active = true;
+                mainActivity.adapter.notifyDataSetChanged();
+                break;
+            case Geofence.GEOFENCE_TRANSITION_DWELL:
+                Toast.makeText(context, "GEOFENCE_TRANSITION_DWELL", Toast.LENGTH_SHORT).show();
+                notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_DWELL", "", SettingsActivity.class);
+                break;
+            case Geofence.GEOFENCE_TRANSITION_EXIT:
+                if(mainActivity.run_id != -1)
+                {
+                    notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_EXIT" + geofences.get(0).getRequestId() + "test", mainActivity.adapter.find_by_id(mainActivity.run_id).name + " saved", SettingsActivity.class);
+                    mainActivity.save_runstate();
+                    mainActivity.run_id = -1;
+                    mainActivity.adapter.find_by_id(id).is_active = false;
+                    mainActivity.adapter.notifyDataSetChanged();
+                }
+                break;
+        }
+
     }
 }
-
