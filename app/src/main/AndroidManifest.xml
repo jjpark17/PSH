@@ -43,6 +43,8 @@
         <activity
             android:name=".CustomAdapter"
             tools:ignore="Instantiatable" />
+        <service
+            android:name=".StateManager"/>
         <activity
             android:name=".SettingsActivity"
             android:screenOrientation="portrait" />

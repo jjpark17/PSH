@@ -125,6 +125,7 @@ public class SettingsActivity extends FragmentActivity implements OnMapReadyCall
         mMap = googleMap;
         // Add a marker in Sydney and move the camera
         mMap.setMyLocationEnabled(true);
+
         if(state.is_tracking)
         {
             latLng = new LatLng(state.lat, state.lng);
@@ -135,6 +136,7 @@ public class SettingsActivity extends FragmentActivity implements OnMapReadyCall
         {
             latLng = new LatLng(36.013, 129.322);
         }
+
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16));
 
         mMap.setOnMapLongClickListener(this);

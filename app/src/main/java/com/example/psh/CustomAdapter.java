@@ -15,7 +15,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 
 public class CustomAdapter extends BaseAdapter {
-    private ArrayList<savingStates> profiles;
+    public ArrayList<savingStates> profiles;
 
     public CustomAdapter(){
         profiles = new ArrayList<savingStates>();

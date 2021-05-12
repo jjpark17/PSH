@@ -3,8 +3,10 @@ package com.example.psh;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.util.Log;
-import android.widget.Toast;
+
+import androidx.preference.PreferenceManager;
 
 import com.google.android.gms.location.Geofence;
 import com.google.android.gms.location.GeofencingEvent;
@@ -39,33 +41,45 @@ public class LocationTracking extends BroadcastReceiver {
         List<Geofence> geofences = geofencingEvent.getTriggeringGeofences();
         Geofence temp = geofences.get(0);
         int id = Integer.parseInt(temp.getRequestId().substring(8));
-        MainActivity mainActivity = MainActivity.getInstance();
+
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext());
+        int run_id = sharedPref.getInt("run", -1);
+        String json = sharedPref.getString("adap", "none");
+        CustomAdapter adapter = new CustomAdapter();
+        adapter.read_json(json);
+        Intent state_intent;
+
         switch (transitionType) {
             case Geofence.GEOFENCE_TRANSITION_ENTER:
-                String body = "";
-                if(mainActivity.run_id != -1){
-                    mainActivity.adapter.find_by_id(mainActivity.run_id).is_active = false;
-                    mainActivity.save_runstate();
-                    body = mainActivity.adapter.find_by_id(mainActivity.run_id).name + " saved & ";
+                if(run_id != -1){ // 바꿀 꺼가 있는지
+                    if(run_id == id) //이미 실행하고 있던 거
+                        return;
+                    state_intent = new Intent(context.getApplicationContext(), StateManager.class);
+                    state_intent.putExtra("op", "sr");
+                    state_intent.putExtra("id", id);
+                    context.getApplicationContext().startService(state_intent);
+                    notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_ENTER", adapter.find_by_id(run_id).name + " saved & " + adapter.find_by_id(id).name + " restored" , SettingsActivity.class);
                 }
-                notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_ENTER" + temp.getRequestId() + "test", body + mainActivity.adapter.find_by_id(id).name + " restored" , SettingsActivity.class);
-                mainActivity.run_id = id;
-                mainActivity.execute_runstate(id);
-                mainActivity.adapter.find_by_id(id).is_active = true;
-                mainActivity.adapter.notifyDataSetChanged();
-                break;
-            case Geofence.GEOFENCE_TRANSITION_DWELL:
-                Toast.makeText(context, "GEOFENCE_TRANSITION_DWELL", Toast.LENGTH_SHORT).show();
-                notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_DWELL", "", SettingsActivity.class);
+                else // 그냥 복구
+                {
+                    state_intent = new Intent(context.getApplicationContext(), StateManager.class);
+                    state_intent.putExtra("op", "r");
+                    state_intent.putExtra("id", id);
+                    context.getApplicationContext().startService(state_intent);
+                    notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_ENTER", adapter.find_by_id(id).name + " restored" , SettingsActivity.class);
+                }
                 break;
             case Geofence.GEOFENCE_TRANSITION_EXIT:
-                if(mainActivity.run_id != -1)
-                {
-                    notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_EXIT" + geofences.get(0).getRequestId() + "test", mainActivity.adapter.find_by_id(mainActivity.run_id).name + " saved", SettingsActivity.class);
-                    mainActivity.save_runstate();
-                    mainActivity.run_id = -1;
-                    mainActivity.adapter.find_by_id(id).is_active = false;
-                    mainActivity.adapter.notifyDataSetChanged();
+                if(run_id != -1){
+                    if(id != run_id)
+                    {
+                        Log.d("adsf", "location error or changed manually in range of geofence");
+                        return;
+                    }
+                    state_intent = new Intent(context.getApplicationContext(), StateManager.class);
+                    state_intent.putExtra("op", "s");
+                    context.getApplicationContext().startService(state_intent);
+                    notificationHelper.sendHighPriorityNotification("GEOFENCE_TRANSITION_EXIT", adapter.find_by_id(id).name + " saved", SettingsActivity.class);
                 }
                 break;
         }
