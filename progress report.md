@@ -45,3 +45,13 @@ commit tag <background location tracking> in main branch
     LocationTracking은 받은 Geofence의 Intent에 따라 mainActivity의 instance를 조작하여 State들을 조작
     실제 폰에서도 3~6분 사이의 빈도로 위치 추적 가능
     https://developer.android.com/training/location/geofencing?hl=ko
+  
+commit tag <background state management> in main branch
+  New class
+    StateManager - State들이 On/Off 될 때 호출되어 state를 저장하는 Service, MainActivity와 LocationTracking Class에 의해 불려짐
+  Summary
+    Background location tracking 자체는 할 수 있었으나 이에 따라 저장된 profile들을 불러와 state들을 저장/복구하는 것은 Background에서 이루어지지 못했음
+    이는 정보를 저장하고 있는 MainActivity가 죽어 이를 관리할 수 없었기 때문인데 이를 해결하기 위해 모든 class가 하나의 SharedPreference를 공유하여 행동할 수 있도록 
+    전체적인 구조를 수정하였음
+    StateManger는 현재 activate된 profile을 종료시키며 저장하거나 특정 profile을 복구시킬 수 있으며, 이 결과를 SharedPreference를 통해서 저장하며, 만일 앱이 foreground에서
+    돌아가고 있어 MainActivity의 instance가 살아있다면, 이에도 정보를 보내주어 activity의 view를 바꾸어 줌
