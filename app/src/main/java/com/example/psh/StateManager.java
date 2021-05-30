@@ -2,7 +2,6 @@ package com.example.psh;
 
 import android.annotation.SuppressLint;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioManager;
@@ -17,6 +16,8 @@ import com.google.gson.reflect.TypeToken;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.DataOutputStream;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -28,7 +29,6 @@ public class StateManager extends Service {
     private AudioManager mAudioManager;
     private int run_id;
     private int id_cnt;
-    private Context context;
     SharedPreferences sharedPref;
     public ArrayList<savingStates> profiles;
 
@@ -39,11 +39,10 @@ public class StateManager extends Service {
         mAudioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         sharedPref = PreferenceManager.getDefaultSharedPreferences(this.getApplicationContext());
         run_id = sharedPref.getInt("run", -1);
-        Log.d("on start", Integer.toString(run_id));
+        id_cnt = sharedPref.getInt("id_cnt", -1);
         profiles = new ArrayList<savingStates>();
         String json = sharedPref.getString("adap", "none");
         read_json(json);
-        Log.d("on start", profiles.toString());
 
         String op;
         op = intent.getStringExtra("op");
@@ -85,27 +84,42 @@ public class StateManager extends Service {
         }
 
         try {
-            BufferedReader br = new BufferedReader(new FileReader(this.getApplicationContext().getFilesDir() + "/" + Integer.toString(id) + "log.txt"));
-            String readStr = "";
-            String str = null;
-            while((str = br.readLine()) != null)
-                readStr += str + "\n";
-            br.close();
-            Log.d("whole txt", readStr);
-            String[] arr = readStr.split("volume");
-            if(arr.length > 1)
+            if(temp.sound_save)
             {
-                Log.d("volume txt", arr[1]);
-                string_to_volume(arr[1]);
-                readStr = arr[2];
+                BufferedReader br = new BufferedReader(new FileReader(this.getFilesDir() + "/" + id + "/" + "volume.txt"));
+                String readStr = "";
+                String str = null;
+                while((str = br.readLine()) != null)
+                    readStr += str + "\n";
+                br.close();
+                Log.d("whole txt", readStr);
+                String[] arr = readStr.split("volume");
+                if(arr.length > 1)
+                {
+                    Log.d("volume txt", arr[1]);
+                    string_to_volume(arr[1]);
+                }
             }
-
-            //(readStr);
+            if(temp.cache_save)
+                restore_app("com.android.chrome");
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes("rm -rf " + this.getFilesDir()  + "/" + run_id + "\n");
+            os.flush();
+            os.writeBytes("exit\n");
+            os.flush();
+            p.waitFor();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+        }
+
         SharedPreferences.Editor editor = sharedPref.edit();
         String json = get_json();
         editor.putString("adap", json);
@@ -119,8 +133,10 @@ public class StateManager extends Service {
         if(run_id == -1)
             return;
         savingStates temp = find_by_id(run_id);
+        File folder = new File(this.getFilesDir().getAbsolutePath() + "/" + run_id + "/");
+        folder.mkdir();
         try {
-            BufferedWriter bw = new BufferedWriter(new FileWriter(this.getApplicationContext().getFilesDir().getAbsolutePath() + "/" + Integer.toString(run_id) + "log.txt",false));
+            BufferedWriter bw = new BufferedWriter(new FileWriter(folder.getAbsolutePath() + "/volume.txt",false));
             if(temp.sound_save)
             {
                 bw.write("volume");
@@ -128,6 +144,8 @@ public class StateManager extends Service {
                 bw.write("volume");
             }
             bw.close();
+            if(temp.cache_save)
+                save_app("com.android.chrome");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -175,6 +193,157 @@ public class StateManager extends Service {
         mAudioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, Integer.parseInt(arr[6]),0);
         mAudioManager.setRingerMode(Integer.parseInt(arr[7]));
         mAudioManager.setMode(Integer.parseInt(arr[8]));
+    }
+
+    public void restore_app(String app_name) {
+        try {
+            //ApplicationInfo app = this.getPackageManager().getApplicationInfo(app_name, 0);
+            //Context packageContext = createPackageContext(app.packageName, 0);
+           // File cache = new File(packageContext.getCacheDir().getAbsolutePath());
+            //File app = new File("/data/user/0/" + app_name + "/");
+            File app = new File("/data/user/0/" + app_name);
+
+            /*
+            File cookie = new File("/data/user/0/com.android.chrome/app_chrome/Default/Cookies");
+            //File cookie_j = new File("/data/user/0/com.android.chrome/app_chrome/Default/Cookies-journal");
+            File history = new File("/data/user/0/com.android.chrome/app_chrome/Default/History");
+            //File history_j = new File("/data/user/0/com.android.chrome/app_chrome/Default/History-journal");
+            */
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+
+            String temp = "[[ -e " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/" + app_name + " ]] && rm -rf " + app.getAbsolutePath() + "/* " + "\n";
+            os.writeBytes(temp);
+            os.flush();
+            os.writeBytes("cp -a " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/" + app_name + "/. " + app.getAbsolutePath() + "\n");
+            os.flush();
+
+            /*
+            os.writeBytes("FILE=\"" + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/" + app_name + "\"\n");
+            os.flush();
+            os.writeBytes("if[ -e ${FILE} ] ; then" + "\n");
+            os.flush();
+            os.writeBytes("a = 1" + "\n");
+            //os.writeBytes("rm -rf " + app.getAbsolutePath() + "/*\n");
+            os.flush();
+
+            os.writeBytes("else" + "\n");
+            os.flush();
+            os.writeBytes("mkdir" + " " + app.getAbsolutePath() + "aa_false" + "\n");
+            //os.writeBytes("rm -rf " + app.getAbsolutePath() + "/*\n");
+            os.flush();
+            os.writeBytes("fi\n");
+            os.flush();
+*/
+
+            /*os.writeBytes("if[ -f \"" + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/Default\" ]; then" + "\n");
+            os.flush();
+            os.writeBytes("rm -rf " + others.getAbsolutePath() + "/*\n");
+            os.flush();
+            os.writeBytes("cp -a " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/Default/. " + others.getAbsolutePath() + "/ " + "\n");
+            os.flush();*/
+            os.writeBytes("exit\n");
+            os.flush();
+            p.waitFor();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+        }
+        return;
+    }
+
+    public void save_app(String app_name)
+    {
+        try {
+            /*
+            ApplicationInfo app = this.getPackageManager().getApplicationInfo("com.android.chrome", 0);
+            Context packageContext = createPackageContext(app.packageName, 0);
+            //File cache = new File("/data/user/0/com.android.chrome/cache/Cache/");
+            //File cookie = new File("/data/user/0/com.android.chrome/app_chrome/Default/Cookies");
+            File cache = new File(packageContext.getCacheDir().getAbsolutePath());
+            File others = new File("/data/user/0/com.android.chrome/app_chrome/Default");*/
+
+            //File app = new File("/data/user/0/" + app_name + "/");
+            File app = new File("/data/user/0/" + app_name);
+
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes("mkdir" + " " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/" + app_name + "\n");
+            os.flush();
+            os.writeBytes("cp -a " + app.getAbsolutePath() + "/. " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/" + app_name + "/" + "\n");
+            os.flush();
+            /*
+            os.writeBytes("mkdir" + " " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/Default" + "\n");
+            os.flush();
+            os.writeBytes("cp -a " + app.getAbsolutePath() + "/. " + this.getFilesDir().getAbsolutePath() + "/" + run_id + "/Default/" + "\n");
+            os.flush();*/
+            os.writeBytes("exit\n");
+            os.flush();
+            p.waitFor();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+        }
+        /*
+        final PackageManager pm = getPackageManager();
+//get a list of installed apps.
+        List<ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+
+        //Log.d(TAG, "Installed package :" + packageInfo.packageName); //com.android.chrome  com.samsung.android.app.sbrowseredge
+        //Log.d(TAG, "Source dir : " + packageInfo.sourceDir);
+        //Log.d(TAG, "Launch Activity :" + pm.getLaunchIntentForPackage(packageInfo.packageName));
+
+        String TAG = "cache_error";
+        for (ApplicationInfo packageInfo : packages) {
+
+            if (packageInfo.packageName.equals("com.android.chrome")) {
+                try {
+                    Context packageContext = createPackageContext(packageInfo.packageName, 0);
+                    File cache = packageContext.getCacheDir();
+                    File files = packageContext.getFilesDir();
+                    File dir = new File("/data/data/com.android.chrome");
+                    if(dir.isFile())
+                        ;
+                    if(dir.isDirectory())
+                        ;
+                    if(dir.isHidden())
+                        ;
+                    boolean a = dir.mkdir();
+                    boolean b = cache.mkdir();
+                    Log.d(TAG, dir.list()[0]);
+                    File file_list[] = dir.listFiles();
+                    Log.d(TAG, file_list.toString());
+                    if(file_list != null)
+                    {
+                        for (int i=0; i<file_list.length; ++i)
+                        {
+                            Log.d("FILE:", file_list[i].getName());
+                            BufferedReader br = new BufferedReader(new FileReader(file_list[i].getAbsolutePath()));
+                            String readStr = "";
+                            String str = null;
+                            while ((str = br.readLine()) != null)
+                                readStr += str + "\n";
+                            br.close();
+                            Log.d(TAG, readStr);
+                        }
+                    }
+
+                    BufferedReader br = new BufferedReader(new FileReader(packageContext.getAbsolutePath()));
+                    String readStr = "";
+                    String str = null;
+                    while ((str = br.readLine()) != null)
+                        readStr += str + "\n";
+                    br.close();
+                    Log.d(TAG, readStr);
+
+                } catch (PackageManager.NameNotFoundException e) {
+                    Log.d(TAG, "NameNotFoundException");
+                } catch (FileNotFoundException e) {
+                    Log.d(TAG, "FileNotFoundException");
+                } catch (IOException e) {
+                    Log.d(TAG, "IOException");
+                }
+            }
+        }*/
+        return;
     }
 
     public String get_json()

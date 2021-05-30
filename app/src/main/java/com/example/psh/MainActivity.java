@@ -1,17 +1,22 @@
 package com.example.psh;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
@@ -28,6 +33,8 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,6 +64,37 @@ public class MainActivity extends AppCompatActivity {
         restore_info();
         instance = this;
         geofencingClient = LocationServices.getGeofencingClient(this);
+    }
+
+    public boolean checkAccessibilityPermissions(){
+        AccessibilityManager accessibilityManager =
+                (AccessibilityManager)getSystemService(Context.ACCESSIBILITY_SERVICE);
+
+        List<AccessibilityServiceInfo> list =
+                accessibilityManager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
+
+        Log.d("service_test", "size : " + list.size());
+        Log.d("service", list.toString());
+        for(int i = 0; i < list.size(); i++){
+            AccessibilityServiceInfo info = list.get(i);
+            if(info.getResolveInfo().serviceInfo.packageName.equals(getApplication().getPackageName())){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void setAccessibilityPermissions(){
+        AlertDialog.Builder permissionDialog = new AlertDialog.Builder(this);
+        permissionDialog.setTitle("접근성 권한 설정");
+        permissionDialog.setMessage("앱을 사용하기 위해 접근성 권한이 필요합니다.");
+        permissionDialog.setPositiveButton("허용", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                return;
+            }
+        }).create().show();
     }
 
     void restore_info()
@@ -168,7 +206,17 @@ public class MainActivity extends AppCompatActivity {
                 {
                     run_id = -1;
                 }
-                //관련 로그 txt 파일 다 지우고
+                try {
+                    Process p = Runtime.getRuntime().exec("su");
+                    DataOutputStream os = new DataOutputStream(p.getOutputStream());
+                    os.writeBytes("rm -rf " + this.getFilesDir()  + "/" + run_id + "\n");
+                    os.flush();
+                    os.writeBytes("exit\n");
+                    os.flush();
+                    p.waitFor();
+                } catch (IOException | InterruptedException e) {
+                    e.printStackTrace();
+                }
                 adapter.remove(cur_pos);
                 store_info();
                 adapter.notifyDataSetChanged();
